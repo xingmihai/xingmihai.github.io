@@ -30,6 +30,8 @@ export const friendsConfig: FriendLink[] = [
 		tags: ["Blog"],
 		weight: 10, // 权重，数字越大排序越靠前
 		enabled: true, // 是否启用
+		rss: "https://blog.xiaow.qzz.io/rss.xml", // 订阅源地址，圈子页按此请求边缘函数
+		circle: true, // 是否参与圈子聚合
 	},
 	{
 		title: "韩小韩博客",
@@ -39,6 +41,8 @@ export const friendsConfig: FriendLink[] = [
 		tags: ["Blog"],
 		weight: 9,
 		enabled: true,
+		rss: "https://www.vvhan.com/rss.xml", // 订阅源地址，圈子页按此请求边缘函数
+		circle: true, // 是否参与圈子聚合
 	},
 	{
 		title: "萌国萌站广场",
@@ -48,6 +52,7 @@ export const friendsConfig: FriendLink[] = [
 		tags: ["导航"],
 		weight: 8,
 		enabled: true,
+		circle: false, // 是否参与圈子聚合
 	},
 	{
 		title: "WebTeleporter",
@@ -57,6 +62,7 @@ export const friendsConfig: FriendLink[] = [
 		tags: ["导航"],
 		weight: 7,
 		enabled: true,
+		circle: false, // 是否参与圈子聚合
 	},
 	{
 		title: "BlogsClub",
@@ -66,6 +72,7 @@ export const friendsConfig: FriendLink[] = [
 		tags: ["导航"],
 		weight: 6,
 		enabled: true,
+		circle: false, // 是否参与圈子聚合
 	},
 	{
 		title: "博友圈",
@@ -75,6 +82,7 @@ export const friendsConfig: FriendLink[] = [
 		tags: ["导航"],
 		weight: 5,
 		enabled: true,
+		circle: false, // 是否参与圈子聚合
 	},
 	{
 		title: "Indi · 中文独立博客",
@@ -84,6 +92,7 @@ export const friendsConfig: FriendLink[] = [
 		tags: ["导航"],
 		weight: 4,
 		enabled: true,
+		circle: false, // 是否参与圈子聚合
 	},
 	{
 		title: "博客汇",
@@ -93,6 +102,7 @@ export const friendsConfig: FriendLink[] = [
 		tags: ["导航"],
 		weight: 3,
 		enabled: true,
+		circle: false, // 是否参与圈子聚合
 	},
 ];
 

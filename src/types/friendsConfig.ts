@@ -8,6 +8,12 @@ export type FriendLink = {
 	weight: number; // 权重，数字越大排序越靠前
 	enabled: boolean; // 是否启用
 	rss?: string; // RSS/Atom 订阅源地址（可选，供圈子页面抓取该站的最新文章）
+	/**
+	 * 是否参与圈子聚合（默认 false）
+	 * 为 true 时，圈子页会对该友链单独请求边缘函数 ?url=<rss>
+	 * 聚合/导航类站点请保持 false，避免把别人的文章当成博主原创
+	 */
+	circle?: boolean;
 };
 
 export type FriendsPageConfig = {

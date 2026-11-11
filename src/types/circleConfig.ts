@@ -1,8 +1,9 @@
 // 圈子页面配置
 // 用于聚合展示朋友们博客的最新文章
 //
-// 数据由独立仓库 circle-feed 定时抓取并发布为 JSON，
-// 本页在浏览器运行时读取，因此更新文章无需重建本站
+// 主链路：页面运行时按 friendsConfig 里 circle: true 的友链，
+// 逐条请求边缘函数 ?url=<rss>，在浏览器里合并排序。
+// 边缘函数全失败时，回退到 dataUrls 里的静态 circle.json。
 
 // 抓取到的单篇文章
 export type CircleItem = {
@@ -36,10 +37,20 @@ export type CirclePayload = {
 export type CirclePageConfig = {
 	title?: string; // 页面标题，留空则使用默认标题
 	description?: string; // 页面描述，留空则使用默认描述
-	// 运行时数据源地址，按顺序尝试，取第一个可用的
-	// 由独立仓库抓取后发布，页面运行时读取
-	// 这样更新文章数据无需重建整站
+
+	/** 边缘函数 base 地址（含路径，末尾斜杠可有可无），例如 https://rss.5al.top/ */
+	edgeBase?: string;
+	/** 单个订阅源请求的超时时间（毫秒），默认 10000 */
+	edgeTimeout?: number;
+	/** 合并后最多展示几篇文章，默认 40 */
+	edgeLimit?: number;
+
+	/**
+	 * 兜底数据源，按顺序尝试，取第一个可用的
+	 * 仅当所有边缘请求都失败时才会用到
+	 */
 	dataUrls?: string[];
+
 	// 是否显示评论区，默认 false
 	showComment?: boolean;
 };

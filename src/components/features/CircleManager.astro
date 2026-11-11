@@ -9,8 +9,10 @@
 ---
 
 <script>
-	// 数据由独立仓库 circle-feed 定时抓取后发布，页面运行时读取
-	// 这样更新文章数据无需重建本站
+	// 主链路：按友链配置里 circle: true 的条目，逐条请求纯 RSS→JSON 边缘函数
+	//         ?url=<订阅源地址>，浏览器端合并、补站点信息、排序、截断
+	// 兜底链路：所有边缘请求都失败时，才回退到 circle-feed 发布的静态 circle.json
+	// 哪些站点参与，完全由 friendsConfig 中每条友链的 circle: true/false 决定
 
 	const circleStateKey = "circleState";
 
@@ -125,10 +127,10 @@
 		html += '<div class="mt-2">如果已在友链里，可能的原因：</div>';
 		html += '<ul class="list-disc pl-4 space-y-1">';
 		html +=
-			"<li>站点没有开启 RSS / Atom 订阅，或订阅源地址比较特殊，自动探测找不到</li>";
+			"<li>站点没有开启 RSS / Atom 订阅，或友链里没有填写 rss 地址</li>";
 		html += "<li>每个站点只显示最新的几篇文章，更早的不会出现在列表里</li>";
 		html +=
-			"<li>数据每 6 小时自动刷新一次，刚发布的文章最多需要等这么久才会出现</li>";
+			"<li>打开页面时实时获取，但边缘节点会缓存几分钟，稍后再刷新即可</li>";
 		html += "</ul>";
 		html +=
 			'<div class="mt-2">想加入收录或反馈问题，可通过友链页面上的联系方式与站长沟通。</div>';
@@ -182,11 +184,121 @@
 			html +=
 				'<div class="flex flex-col items-center justify-center py-14 text-neutral-400 dark:text-neutral-500">' +
 				'<div class="text-sm">还没有抓到任何文章</div>' +
-				'<div class="text-xs mt-1.5 opacity-70">可在数据源仓库里检查订阅源配置与抓取日志</div>' +
+				'<div class="text-xs mt-1.5 opacity-70">可在友链配置里检查 circle 与 rss 字段，或稍后刷新重试</div>' +
 				"</div>";
 		}
 
 		root.innerHTML = html;
+	};
+
+	const parseSources = (root) => {
+		try {
+			const list = JSON.parse(root.dataset.sources || "[]");
+			return Array.isArray(list)
+				? list.filter((s) => s && s.name && s.rss)
+				: [];
+		} catch {
+			return [];
+		}
+	};
+
+	// 边缘函数只接受 ?url=<订阅源地址>，只返回这一个源的 JSON
+	const buildEdgeUrl = (base, feed) => {
+		const sep = base.includes("?") ? (base.endsWith("?") ? "" : "&") : "?";
+		return base + sep + "url=" + encodeURIComponent(feed);
+	};
+
+	const fetchOneSource = (source, base, timeout) => {
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), timeout);
+		return fetch(buildEdgeUrl(base, source.rss), {
+			cache: "no-store",
+			signal: controller.signal,
+		})
+			.then(async (res) => {
+				let data = null;
+				try {
+					data = await res.json();
+				} catch {
+					data = null;
+				}
+				// 502 不会让 fetch reject，必须同时判断 HTTP 状态与业务 ok
+				if (
+					!res.ok ||
+					!data ||
+					data.ok !== true ||
+					!Array.isArray(data.items)
+				) {
+					throw new Error((data && data.error) || `HTTP ${res.status}`);
+				}
+				return {
+					source,
+					ok: true,
+					items: data.items.map((it) => ({
+						title: it.title,
+						link: it.link,
+						published: it.published || "",
+						timestamp: Number(it.timestamp) || 0,
+						sourceName: source.name,
+						sourceAvatar: source.avatar,
+						sourceSite: source.site,
+					})),
+				};
+			})
+			.catch((err) => ({
+				source,
+				ok: false,
+				items: [],
+				error:
+					err && err.name === "AbortError"
+						? "请求超时"
+						: String((err && err.message) || err),
+			}))
+			.finally(() => clearTimeout(timer));
+	};
+
+	const loadFromEdge = async (root) => {
+		const base = (root.dataset.edgeBase || "").trim();
+		const sources = parseSources(root);
+		if (!base || sources.length === 0) return null;
+
+		const timeout = Number(root.dataset.edgeTimeout) || 10000;
+		const limit = Number(root.dataset.edgeLimit) || 40;
+
+		// 并发请求；单个源失败只影响它自己，不会拖垮整页
+		const results = await Promise.all(
+			sources.map((s) => fetchOneSource(s, base, timeout)),
+		);
+
+		const items = [];
+		const sourcesMeta = [];
+		const failures = [];
+		for (const r of results) {
+			if (r.ok) {
+				items.push(...r.items);
+			} else {
+				failures.push({ name: r.source.name, error: r.error });
+			}
+			sourcesMeta.push({
+				name: r.source.name,
+				site: r.source.site,
+				avatar: r.source.avatar,
+				feedUrl: r.source.rss,
+				ok: r.ok,
+			});
+		}
+
+		// 全部失败时返回 null，交给静态数据兜底
+		if (items.length === 0) return null;
+
+		items.sort((a, b) => b.timestamp - a.timestamp);
+		return {
+			updatedAt: new Date().toISOString(),
+			sourceCount: sourcesMeta.length,
+			sources: sourcesMeta,
+			items: items.slice(0, limit),
+			failures,
+		};
 	};
 
 	const loadCircle = async () => {
@@ -203,17 +315,32 @@
 			.filter(Boolean)
 			.filter((u, i, arr) => arr.indexOf(u) === i);
 
-		if (urls.length === 0) {
+		const edgeConfigured =
+			(root.dataset.edgeBase || "").trim() && parseSources(root).length > 0;
+
+		if (!edgeConfigured && urls.length === 0) {
 			root.dataset[circleStateKey] = "done";
 			renderEmpty(
 				root,
 				"还没有配置数据源",
-				"请在 circleConfig 的 dataUrls 中填入数据源地址",
+				"请在 circleConfig 里填 edgeBase，或给友链配置 circle 与 rss",
 			);
 			return;
 		}
 
-		// 依次尝试，取第一个可用的数据源
+		// ① 主链路：逐条友链请求边缘函数
+		try {
+			const payload = await loadFromEdge(root);
+			if (payload) {
+				render(root, payload);
+				root.dataset[circleStateKey] = "done";
+				return;
+			}
+		} catch {
+			// 落到兜底
+		}
+
+		// ② 兜底：circle-feed 定时发布的静态 circle.json
 		for (const url of urls) {
 			try {
 				const res = await fetch(url, { cache: "no-store" });
@@ -231,7 +358,7 @@
 		renderEmpty(
 			root,
 			"没能读到圈子数据",
-			"可到数据源仓库的 Actions 里手动运行一次 Update and Deploy",
+			"可检查边缘函数与订阅源地址，或稍后刷新重试",
 		);
 	};
 

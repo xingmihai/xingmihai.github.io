@@ -1,6 +1,7 @@
 ---
 import { Icon } from "astro-icon/components";
 import { circleConfig, siteConfig } from "@/config";
+import { friendsConfig } from "@/config/friendsConfig";
 import MainGridLayout from "@/layouts/MainGridLayout.astro";
 import "@/styles/pages/common.css";
 import "@/styles/pages/circle.css";
@@ -14,8 +15,18 @@ const title = circleConfig.title || "圈子";
 const description =
 	circleConfig.description || "朋友们最近写下的东西，由订阅源自动汇总。";
 
-// 运行时数据源：由独立仓库 circle-feed 定时抓取后发布
-// 页面在浏览器里读取，因此更新文章数据无需重建本站
+// 参与圈子的站点：由每条友链的 circle: true 决定，与友链页共用同一份配置
+// 没有填 rss 地址的条目会被跳过（边缘函数只接受 ?url=<订阅源>）
+const circleSources = friendsConfig
+	.filter((friend) => friend.enabled && friend.circle === true && friend.rss)
+	.map((friend) => ({
+		name: friend.title,
+		site: friend.siteurl,
+		avatar: friend.imgurl,
+		rss: friend.rss as string,
+	}));
+
+// 兜底数据源：仅当所有边缘请求都失败时才使用
 const dataUrls = circleConfig.dataUrls ?? [];
 ---
 
@@ -38,7 +49,14 @@ const dataUrls = circleConfig.dataUrls ?? [];
       </div>
 
       <!-- 内容由 CircleManager 异步填充：常驻脚本，兼容 Swup 无刷新切换 -->
-      <div id="circle-root" data-urls={dataUrls.join("|")}>
+      <div
+        id="circle-root"
+        data-edge-base={circleConfig.edgeBase ?? ""}
+        data-edge-timeout={String(circleConfig.edgeTimeout ?? 10000)}
+        data-edge-limit={String(circleConfig.edgeLimit ?? 40)}
+        data-sources={JSON.stringify(circleSources)}
+        data-urls={dataUrls.join("|")}
+      >
         <div class="flex flex-col items-center justify-center py-14 text-neutral-400 dark:text-neutral-500">
           <Icon name="material-symbols:rss-feed-rounded" class="text-4xl mb-3 animate-pulse" />
           <div class="text-sm">正在获取最新文章…</div>
